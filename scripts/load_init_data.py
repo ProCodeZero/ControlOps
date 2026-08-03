@@ -8,8 +8,6 @@ from pathlib import Path
 import asyncpg
 import yaml
 from openpyxl import load_workbook
-
-# Консоль Windows по умолчанию в cp1252 и падает на кириллице в сообщениях.
 for stream in (sys.stdout, sys.stderr):
     if hasattr(stream, "reconfigure"):
         stream.reconfigure(encoding="utf-8", errors="replace")
@@ -83,7 +81,6 @@ def parse_int_list(text):
 
 
 def to_date(value):
-    """Ячейку с датой региона приводим к date. Пустая -> None."""
     if value is None:
         return None
     if hasattr(value, "date"):
@@ -94,7 +91,7 @@ def to_date(value):
 
 
 def read_excel(path):
-    """Читает лист операций и возвращает список словарей — по одному на строку Excel."""
+    """Читает лист операций и возвращает список словарей """
     workbook = load_workbook(path, data_only=True, read_only=True)
     if SHEET_NAME not in workbook.sheetnames:
         raise LoadError(
@@ -203,7 +200,6 @@ def drop_duplicates(records, strict):
 
 
 def resolve_ids(records, material_ids, region_ids):
-    """Подставляет t_material_id и region_id; разворачивает регионы в отдельные строки."""
     unknown_materials = sorted(
         {r["t_material"] for r in records if r["t_material"] not in material_ids}
     )
@@ -251,10 +247,6 @@ def report_dependency_stats(records):
         logger.info("  %-22s %d строк", label, histogram[count])
 
 
-# --------------------------------------------------------------------------- #
-# База данных
-# --------------------------------------------------------------------------- #
-
 def load_db_config(path):
     with open(path, "r", encoding="utf-8") as handle:
         config = yaml.safe_load(handle)
@@ -290,9 +282,6 @@ async def write_rows(connection, rows):
                 "year",
             ],
         )
-
-
-# --------------------------------------------------------------------------- #
 
 async def run(args):
     excel_path = Path(args.excel)
