@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.18)
 project(RusAgroBack_Control_Operations LANGUAGES CXX)
 
 # --- Общие настройки ---
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
@@ -119,9 +119,15 @@ install(TARGETS RusAgroBack_Control_Operations
 # ------------------- Тесты -------------------
 if(BUILD_TESTS)
   enable_testing()
-  find_package(Catch2 REQUIRED)
-  add_executable(tests ${CMAKE_SOURCE_DIR}/tests/test_main.cpp)
-  target_link_libraries(tests PRIVATE RusAgroBack_Control_Operations Catch2::Catch2)
+  add_executable(tests
+    ${CMAKE_SOURCE_DIR}/tests/test_main.cpp
+    ${CMAKE_SOURCE_DIR}/tests/test_input_aggregation.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/InputAggregation.cpp
+  )
+  target_include_directories(tests PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/tests
+  )
   add_test(NAME unit_tests COMMAND tests)
 endif()
 

@@ -7,7 +7,10 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+
+      - name: Create config from example
+        run: Copy-Item config/db_config.yml.example config/db_config.yml
 
       - name: Install vcpkg and dependencies
         run: |
@@ -17,13 +20,26 @@ jobs:
 
       - name: Configure CMake
         run: |
-          cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=C:\vcpkg\scripts\buildsystems\vcpkg.cmake -A x64 -DCMAKE_BUILD_TYPE=Release
+          cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=C:\vcpkg\scripts\buildsystems\vcpkg.cmake -A x64 -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=ON
 
       - name: Build
         run: cmake --build build --config Release
 
+      - name: Run unit tests
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: List runtime folder
+        run: Get-ChildItem build/Release | Select-Object Name, Length
+
+      # Выкладываем всю папку сборки: vcpkg кладёт рядом с .exe нужные DLL
+      # (libpqxx, boost, yaml-cpp, libpq, OpenSSL). Без них .exe не запустится,
+      # а MinGW-библиотеки из старого комплекта libs/control_ops не подходят —
+      # там другой ABI.
+      # tests.exe в комплект поставки не идёт — тесты прогоняются шагом выше.
       - name: Upload Artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: RusAgroBack-Windows
-          path: build/Release/RusAgroBack_Control_Operations.exe
+          path: |
+            build/Release/
+            !build/Release/tests.exe

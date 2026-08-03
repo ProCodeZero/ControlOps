@@ -13,10 +13,15 @@ inline std::string dateToStr(const std::optional<boost::gregorian::date>& d) {
 inline void logFrameState(const std::string& step, const SapDataFrame& frame) {
     // Фильтруем только нужный higher_tm и год
     if (frame.higher_tm == "TM-04-41-35-0008" && frame.year == 2026) {
+        std::string actual_inputs;
+        for (const auto& d : frame.actual_input_dates)
+            actual_inputs += boost::gregorian::to_simple_string(d.date)
+                           + (d.is_alternative ? "(alt) " : " ");
+
         spdlog::info(
             "[DEBUG {}] higher_tm={}, year={}, t_material_id={}, order={}, "
             "actual_date={}, start_date={}, is_completed={}, is_started={}, "
-            "actual_input_date={}, actual_alternative_date={}, sawing_date={}, "
+            "actual_input_dates=[{}], sawing_date={}, "
             "resawing_date={}, minimal_date={}, status={}",
             step,
             frame.higher_tm,
@@ -27,8 +32,7 @@ inline void logFrameState(const std::string& step, const SapDataFrame& frame) {
             dateToStr(frame.start_date),
             frame.is_completed,
             frame.is_started,
-            dateToStr(frame.actual_input_date),
-            dateToStr(frame.actual_alternative_date),
+            actual_inputs,
             dateToStr(frame.sawing_date),
             dateToStr(frame.resawing_date),
             dateToStr(frame.minimal_date),

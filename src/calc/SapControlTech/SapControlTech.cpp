@@ -45,9 +45,7 @@ int calcSapControlAggregated()
 
         calcActualDate(sapDataUniqueTMaterialSlices, sapDataSlices);
 
-        calcInputDate(sapDataUniqueTMaterialSlices, initialData);
-
-        calcAlternativeDate(sapDataUniqueTMaterialSlices, initialData);
+        calcActualInputDates(sapDataUniqueTMaterialSlices, initialData);
 
         calcSawingDate(sapDataUniqueTMaterialSlices, idsSeeding);
 

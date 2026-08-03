@@ -1,9 +1,8 @@
 #include <calc/SapControlTech/CalcActualDateCompleteEntryOperation.hpp>
 #include <utils/utilsBoostDate.hpp>
-#include <utils/utilsOptional.hpp>
 #include <utils/DebugLogger.hpp>
 
-void calcInputDate(YearSlices& uniqueSlices, const InitialData& initData)
+void calcActualInputDates(YearSlices& uniqueSlices, const InitialData& initData)
 {
     for (auto& [year, higherTmMap] : uniqueSlices)
     {
@@ -13,208 +12,65 @@ void calcInputDate(YearSlices& uniqueSlices, const InitialData& initData)
             {
                 for (auto& frame : slice)
                 {
-                    logFrameState("CalcInputDate_BEFORE", frame);
-
-                    KeyCRTYS5 key {
-                        frame.culture_id,
-                        frame.region_id,
-                        frame.t_material_id,
-                        frame.year,
-                        frame.season
-                    };
-
-                    auto it = initData.CRTYS_index_map.find(key);
-                    if (it == initData.CRTYS_index_map.end())
-                    {
-                        frame.actual_input_date = std::nullopt;
-                        continue;
-                    }
-
-                    const InitialDataFrame& matchInitData = initData.data[it->second];
-
-                    // Проверка наличия input_operation_order
-                    if (!matchInitData.input_operation_order.has_value())
-                    {
-                        frame.actual_input_date = std::nullopt;
-                        continue;
-                    }
-
-                    // Ищем родительскую запись по input_operation_order
-                    KeyOrder4 parentKey
-                    {
-                        matchInitData.culture_id,
-                        matchInitData.region_id,
-                        matchInitData.input_operation_order.value(),
-                        matchInitData.year
-                    };
-
-                    auto parentIt = initData.order_index_map.find(parentKey);
-                    if (parentIt == initData.order_index_map.end())
-                    {
-                        frame.actual_input_date = std::nullopt;
-                        continue;
-                    }
-
-                    const InitialDataFrame& parentInitData = initData.data[parentIt->second];
-
-                    // Теперь ищем actual_date по CRTYS из parentInitData
-                    KeyCRTYS5 parentCRTYSKey
-                    {
-                        parentInitData.culture_id,
-                        parentInitData.region_id,
-                        parentInitData.t_material_id,
-                        parentInitData.year,
-                        parentInitData.season
-                    };
-
-                    auto parentSliceIt = initData.CRTYS_index_map.find(parentCRTYSKey);
-                    if (parentSliceIt == initData.CRTYS_index_map.end())
-                    {
-                        frame.actual_input_date = std::nullopt;
-                        continue;
-                    }
-
-                    // actual_date мы берём из uniqueSlices
-                    auto& parentFrame = uniqueSlices[year][higher_tm];
-
-                    std::optional<boost::gregorian::date> actual_date;
-                    for (const auto& parentSlice : parentFrame)
-                    {
-                        for (const auto& candidate : parentSlice)
-                        {
-                            if (candidate.culture_id == parentInitData.culture_id &&
-                                candidate.region_id == parentInitData.region_id &&
-                                candidate.t_material_id == parentInitData.t_material_id &&
-                                candidate.year == parentInitData.year &&
-                                candidate.season == parentInitData.season)
-                            {
-                                actual_date = candidate.actual_date;
-                                break;
-                            }
-                        }
-                        if (actual_date.has_value()) break;
-                    }
-
-                    // Вычисляем actual_input_date
-                    if (actual_date.has_value() && matchInitData.input_deadline.has_value())
-                    {
-                        frame.actual_input_date = actual_date.value() + boost::gregorian::days(matchInitData.input_deadline.value());
-                    }
-                    else
-                    {
-                        frame.actual_input_date = std::nullopt;
-                    }
-
-                    logFrameState("CalcInputDate_AFTER", frame);
-                }
-            }
-        }
-    }
-}
-
-void calcAlternativeDate(YearSlices& uniqueSlices, const InitialData& initData)
-{
-    for (auto& [year, higherTmMap] : uniqueSlices)
-    {
-        for (auto& [higher_tm, sliceList] : higherTmMap)
-        {
-            for (auto& slice : sliceList)
-            {
-                for (auto& frame : slice)
-                {
-                    logFrameState("CalcAlternativeDate_BEFORE", frame);
+                    logFrameState("CalcActualInputDates_BEFORE", frame);
+                    frame.actual_input_dates.clear();
 
                     KeyCRTYS5 key{
-                        frame.culture_id,
-                        frame.region_id,
-                        frame.t_material_id,
-                        frame.year,
-                        frame.season
+                        frame.culture_id, frame.region_id, frame.t_material_id,
+                        frame.year, frame.season
                     };
 
                     auto it = initData.CRTYS_index_map.find(key);
                     if (it == initData.CRTYS_index_map.end())
                     {
-                        frame.actual_alternative_date = std::nullopt;
+                        logFrameState("CalcActualInputDates_AFTER", frame);
                         continue;
                     }
 
                     const InitialDataFrame& matchInitData = initData.data[it->second];
 
-                    // Проверка наличия input_operation_order
-                    if (!matchInitData.input_operation_order.has_value())
+                    for (const auto& dep : matchInitData.input_operations)
                     {
-                        frame.actual_alternative_date = std::nullopt;
-                        continue;
-                    }
+                        KeyOrder4 parentKey{
+                            matchInitData.culture_id, matchInitData.region_id,
+                            dep.operation_order, matchInitData.year
+                        };
 
-                    // Ищем родительскую запись по input_operation_order
-                    KeyOrder4 parentKey
-                    {
-                        matchInitData.culture_id,
-                        matchInitData.region_id,
-                        matchInitData.input_operation_order.value(),
-                        matchInitData.year
-                    };
+                        auto parentIt = initData.order_index_map.find(parentKey);
+                        if (parentIt == initData.order_index_map.end())
+                            continue;
 
-                    auto parentIt = initData.order_index_map.find(parentKey);
-                    if (parentIt == initData.order_index_map.end())
-                    {
-                        frame.actual_alternative_date = std::nullopt;
-                        continue;
-                    }
+                        const InitialDataFrame& parentInitData = initData.data[parentIt->second];
 
-                    const InitialDataFrame& parentInitData = initData.data[parentIt->second];
-
-                    // Теперь ищем actual_date по CRTYS из parentInitData
-                    KeyCRTYS5 parentCRTYSKey
-                    {
-                        parentInitData.culture_id,
-                        parentInitData.region_id,
-                        parentInitData.t_material_id,
-                        parentInitData.year,
-                        parentInitData.season
-                    };
-
-                    auto parentSliceIt = initData.CRTYS_index_map.find(parentCRTYSKey);
-                    if (parentSliceIt == initData.CRTYS_index_map.end())
-                    {
-                        frame.actual_alternative_date = std::nullopt;
-                        continue;
-                    }
-
-                    // actual_date мы берём из uniqueSlices
-                    auto& parentFrame = uniqueSlices[year][higher_tm];
-
-                    std::optional<boost::gregorian::date> actual_date;
-                    for (const auto& parentSlice : parentFrame)
-                    {
-                        for (const auto& candidate : parentSlice)
+                        // actual_date of the parent operation, taken from the SAP slices.
+                        std::optional<boost::gregorian::date> parentActual;
+                        auto& parentFrames = uniqueSlices[year][higher_tm];
+                        for (const auto& parentSlice : parentFrames)
                         {
-                            if (candidate.culture_id == parentInitData.culture_id &&
-                                candidate.region_id == parentInitData.region_id &&
-                                candidate.t_material_id == parentInitData.t_material_id &&
-                                candidate.year == parentInitData.year &&
-                                candidate.season == parentInitData.season)
+                            for (const auto& candidate : parentSlice)
                             {
-                                actual_date = candidate.actual_date;
-                                break;
+                                if (candidate.culture_id == parentInitData.culture_id &&
+                                    candidate.region_id == parentInitData.region_id &&
+                                    candidate.t_material_id == parentInitData.t_material_id &&
+                                    candidate.year == parentInitData.year &&
+                                    candidate.season == parentInitData.season)
+                                {
+                                    parentActual = candidate.actual_date;
+                                    break;
+                                }
                             }
+                            if (parentActual.has_value()) break;
                         }
-                        if (actual_date.has_value()) break;
+
+                        if (parentActual.has_value())
+                        {
+                            frame.actual_input_dates.push_back(ActualInputDate{
+                                parentActual.value() + boost::gregorian::days(dep.deadline),
+                                dep.is_alternative });
+                        }
                     }
 
-                    // Вычисляем actual_alternative_date
-                    if (actual_date.has_value() && matchInitData.alternative_deadline.has_value())
-                    {
-                        frame.actual_alternative_date = actual_date.value() + boost::gregorian::days(matchInitData.alternative_deadline.value());
-                    }
-                    else
-                    {
-                        frame.actual_alternative_date = std::nullopt;
-                    }
-
-                    logFrameState("CalcAlternativeDate_BEFORE", frame);
+                    logFrameState("CalcActualInputDates_AFTER", frame);
                 }
             }
         }
