@@ -71,7 +71,7 @@ TEST_CASE(aggregate_min_picks_smallest_present) {
     CHECK(*r == 2);
 }
 
-// --- Business rule: min without an alternative, max once an alternative contributed ---
+//min without an alternative, max once an alternative contributed ---
 
 TEST_CASE(rule_takes_max_when_alternative_contributed) {
     // planned=11 apr (11), primary input=6 (6), alternative input=20
