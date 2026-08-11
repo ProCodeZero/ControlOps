@@ -47,11 +47,6 @@ class LoadError(Exception):
     """Ошибка, из-за которой загружать данные нельзя."""
 
 def normalize_list_cell(value):
-    """Ячейку со списком зависимостей приводим к строке "23, 17".
-
-    openpyxl отдаёт одиночное число как int, а перечисление — как str.
-    Пустая ячейка -> None (в БД ляжет NULL).
-    """
     if value is None:
         return None
     text = str(value).strip()
@@ -65,7 +60,6 @@ def normalize_list_cell(value):
 
 
 def parse_int_list(text):
-    """Разбор "23, 17" -> [23, 17]. Повторяет логику C++ splitInts."""
     if text is None:
         return []
     out = []
@@ -125,8 +119,6 @@ def read_excel(path):
 
         orders_text = normalize_list_cell(cell(row, "input_operation_order"))
         deadlines_text = normalize_list_cell(cell(row, "input_deadline"))
-
-        # Та же проверка, что и в C++: количество номеров должно совпадать с количеством сроков.
         orders = parse_int_list(orders_text)
         deadlines = parse_int_list(deadlines_text)
         if len(orders) != len(deadlines):
@@ -181,7 +173,6 @@ def drop_duplicates(records, strict):
         kept.append(record)
 
     if dropped:
-        logger.warning("Найдено дубликатов: %d — они уронили бы расчёт", len(dropped))
         for record, first in dropped:
             logger.warning(
                 "  строка %s: culture=%s t_material=%s season=%s order=%s "
@@ -192,9 +183,7 @@ def drop_duplicates(records, strict):
         if strict:
             raise LoadError(
                 "загрузка прервана из-за дубликатов (--strict). "
-                "Исправьте Excel или запустите без --strict, чтобы оставить первые вхождения"
             )
-        logger.warning("Оставлены первые вхождения. Уточните у бизнеса, какие строки верные.")
 
     return kept
 
@@ -237,7 +226,6 @@ def resolve_ids(records, material_ids, region_ids):
 
 
 def report_dependency_stats(records):
-    """Короткая сводка по зависимостям — чтобы глазами увидеть, что файл разобран верно."""
     histogram = {}
     for record in records:
         count = len(parse_int_list(record["input_operation_order"]))
@@ -263,16 +251,11 @@ async def fetch_lookup(connection, query, key_field, value_field):
 
 
 async def write_rows(connection, rows, years):
-    """Перезагружает только те годы, которые есть в Excel.
-
-    Записи за остальные годы остаются нетронутыми, поэтому загрузка справочника
-    за один год не стирает историю за предыдущие.
-    """
+    """Заменяет записи только за те годы, которые есть в Excel."""
     async with connection.transaction():
-        status = await connection.execute(
+        await connection.execute(
             f"DELETE FROM {TABLE_NAME} WHERE year = ANY($1::int[])", years
         )
-        deleted = int(status.split()[-1]) if status.startswith("DELETE") else 0
         await connection.copy_records_to_table(
             TABLE_NAME,
             records=rows,
@@ -289,19 +272,6 @@ async def write_rows(connection, rows, years):
                 "year",
             ],
         )
-    return deleted
-
-
-async def report_year_impact(connection, years):
-    """Показывает, что будет затронуто, а что останется нетронутым."""
-    affected = await connection.fetchval(
-        f"SELECT count(*) FROM {TABLE_NAME} WHERE year = ANY($1::int[])", years
-    )
-    untouched = await connection.fetchval(
-        f"SELECT count(*) FROM {TABLE_NAME} WHERE year <> ALL($1::int[])", years
-    )
-    logger.info("В базе за эти годы: %d строк — будут заменены", affected)
-    logger.info("За остальные годы: %d строк — останутся нетронутыми", untouched)
 
 
 async def run(args):
@@ -339,17 +309,15 @@ async def run(args):
         )
 
         years = sorted({record["year"] for record in records})
-        logger.info("Годы в файле: %s", ", ".join(str(y) for y in years))
-        await report_year_impact(connection, years)
 
         if args.dry_run:
-            logger.info("--dry-run: проверки пройдены, база не изменена")
+            logger.info("--dry-run: база не изменена")
             return
 
-        deleted = await write_rows(connection, rows, years)
+        await write_rows(connection, rows, years)
         logger.info(
-            "Готово: удалено %d строк за %s, загружено %d строк",
-            deleted, ", ".join(str(y) for y in years), len(rows),
+            "Готово: в %s загружено %d строк за %s",
+            TABLE_NAME, len(rows), ", ".join(str(y) for y in years),
         )
     finally:
         await connection.close()
