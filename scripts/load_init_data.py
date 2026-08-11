@@ -262,10 +262,17 @@ async def fetch_lookup(connection, query, key_field, value_field):
     return {row[key_field]: row[value_field] for row in rows}
 
 
-async def write_rows(connection, rows):
-    """Полная перезагрузка справочника: очистка + вставка (как в export_control_ops.py)."""
+async def write_rows(connection, rows, years):
+    """Перезагружает только те годы, которые есть в Excel.
+
+    Записи за остальные годы остаются нетронутыми, поэтому загрузка справочника
+    за один год не стирает историю за предыдущие.
+    """
     async with connection.transaction():
-        await connection.execute(f"TRUNCATE TABLE {TABLE_NAME} RESTART IDENTITY")
+        status = await connection.execute(
+            f"DELETE FROM {TABLE_NAME} WHERE year = ANY($1::int[])", years
+        )
+        deleted = int(status.split()[-1]) if status.startswith("DELETE") else 0
         await connection.copy_records_to_table(
             TABLE_NAME,
             records=rows,
@@ -282,6 +289,20 @@ async def write_rows(connection, rows):
                 "year",
             ],
         )
+    return deleted
+
+
+async def report_year_impact(connection, years):
+    """Показывает, что будет затронуто, а что останется нетронутым."""
+    affected = await connection.fetchval(
+        f"SELECT count(*) FROM {TABLE_NAME} WHERE year = ANY($1::int[])", years
+    )
+    untouched = await connection.fetchval(
+        f"SELECT count(*) FROM {TABLE_NAME} WHERE year <> ALL($1::int[])", years
+    )
+    logger.info("В базе за эти годы: %d строк — будут заменены", affected)
+    logger.info("За остальные годы: %d строк — останутся нетронутыми", untouched)
+
 
 async def run(args):
     excel_path = Path(args.excel)
@@ -317,12 +338,19 @@ async def run(args):
             len(rows), len(records), len(REGION_COLUMNS),
         )
 
+        years = sorted({record["year"] for record in records})
+        logger.info("Годы в файле: %s", ", ".join(str(y) for y in years))
+        await report_year_impact(connection, years)
+
         if args.dry_run:
             logger.info("--dry-run: проверки пройдены, база не изменена")
             return
 
-        await write_rows(connection, rows)
-        logger.info("Готово: в %s загружено %d строк", TABLE_NAME, len(rows))
+        deleted = await write_rows(connection, rows, years)
+        logger.info(
+            "Готово: удалено %d строк за %s, загружено %d строк",
+            deleted, ", ".join(str(y) for y in years), len(rows),
+        )
     finally:
         await connection.close()
 
