@@ -5,6 +5,7 @@
 #include <optional>
 #include <boost/date_time/gregorian/gregorian.hpp>
 #include <pqxx/pqxx>
+#include <utils/InputAggregation.hpp>
 
 struct KeyOrder4
 {
@@ -71,8 +72,6 @@ struct KeyCRTYS5Hash
 struct PlannedDates
 {
 	std::optional<boost::gregorian::date> planned_date;
-	std::optional<boost::gregorian::date> input_date;
-	std::optional<boost::gregorian::date> alternative_date;
 	std::optional<boost::gregorian::date> minimal_planned_date;
 };
 
@@ -83,10 +82,7 @@ struct InitialDataFrame
 	int region_id;
 	std::string season;
 	std::optional<boost::gregorian::date> region_date;
-	std::optional<int> input_operation_order;
-    std::optional<int> alternative_operation_order;
-	std::optional<int> input_deadline;
-	std::optional<int> alternative_deadline;
+	std::vector<InputOperation> input_operations;
 	std::optional<int> noinput_deadline;
 	int order;
 	int year;

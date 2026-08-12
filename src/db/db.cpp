@@ -129,9 +129,7 @@ pqxx::result Database::fetchInitialDataRaw()
             season,
             region_date,
             input_operation_order,
-            alternative_operation_order,
             input_deadline,
-            alternative_deadline,
             noinput_deadline,
             "order",
             year

@@ -1,6 +1,7 @@
-// Новый calcMinimalDate, адаптированный под структуры SapData и InitialData
+// calcMinimalDate adapted to N input dependencies.
 #include <calc/SapControlTech/CalcMinimalDate.hpp>
 #include <utils/utilsBoostDate.hpp>
+#include <utils/InputAggregation.hpp>
 #include <utils/DebugLogger.hpp>
 
 using boost::gregorian::date;
@@ -16,7 +17,7 @@ std::optional<std::string> setStatus(const std::optional<date>& actual_date, con
     {
         if (today < minimal_date.value()) return "Не завершено";
         else return "Просрочено";
- }
+    }
     else
     {
         if (*actual_date <= minimal_date.value()) return "Выполнено в срок";
@@ -24,11 +25,11 @@ std::optional<std::string> setStatus(const std::optional<date>& actual_date, con
     }
 }
 
-std::optional<std::string> setIsActual(const std::optional<std::string>& status, const std::optional<date>& actual_data, const std::optional<date>& actual_input_data, const std::optional<date>& actual_alternative_data)
+std::optional<std::string> setIsActual(const std::optional<std::string>& status, const std::optional<date>& actual_data, bool has_actual_input)
 {
     if (!status || *status == "Операция не отслеживается")
         return "Статус отсутствует";
-    if (actual_data || actual_input_data || actual_alternative_data)
+    if (actual_data || has_actual_input)
         return "Актуально";
     else
         return "Ориентировочно";
@@ -38,7 +39,6 @@ void calcMinimalDate(YearSlices& uniqueSlices, const InitialData& initData)
 {
     using namespace boost::gregorian;
 
-    // Получаем текущую дату для статуса
     date today = day_clock::local_day();
 
     for (auto& [year, higherTmMap] : uniqueSlices)
@@ -50,14 +50,10 @@ void calcMinimalDate(YearSlices& uniqueSlices, const InitialData& initData)
                 for (auto& frame : slice)
                 {
                     logFrameState("CalcMinimalDate_BEFORE", frame);
-                    // Поиск соответствующей записи в InitialData
-                    KeyCRTYS5 key
-                    {
-                        frame.culture_id,
-                        frame.region_id,
-                        frame.t_material_id,
-                        frame.year,
-                        frame.season
+
+                    KeyCRTYS5 key{
+                        frame.culture_id, frame.region_id, frame.t_material_id,
+                        frame.year, frame.season
                     };
                     auto it = initData.CRTYS_index_map.find(key);
                     if (it == initData.CRTYS_index_map.end())
@@ -72,9 +68,9 @@ void calcMinimalDate(YearSlices& uniqueSlices, const InitialData& initData)
 
                     frame.order = initFrame.order;
 
-                    // Вычисление min_plan_date
+                    // Compute min_plan_date.
                     std::optional<date> min_plan_date;
-                    if (initFrame.input_operation_order.has_value())
+                    if (!initFrame.input_operations.empty())
                     {
                         min_plan_date = initFrame.planned_dates.minimal_planned_date;
                     }
@@ -87,26 +83,22 @@ void calcMinimalDate(YearSlices& uniqueSlices, const InitialData& initData)
                         min_plan_date = std::nullopt;
                     }
 
-                    // Выбор минимальной даты
-                    std::vector<std::optional<date>> dates;
-                    if (min_plan_date) dates.push_back(min_plan_date.value());
-                    if (frame.actual_input_date) dates.push_back(frame.actual_input_date.value());
-                    if (frame.actual_alternative_date) dates.push_back(frame.actual_alternative_date.value());
-
-                    if (dates.empty())
+                    // Business rule: min without an alternative, max once an alternative
+                    // dependency produced a date.
+                    std::vector<std::optional<date>> candidates;
+                    candidates.push_back(min_plan_date);
+                    bool alternative_contributed = false;
+                    for (const auto& d : frame.actual_input_dates)
                     {
-                        frame.minimal_date = std::nullopt;
-                    }
-                    else
-                    {
-                        frame.minimal_date = *std::min_element(dates.begin(), dates.end(),
-                            [](const auto& a, const auto& b) { return a < b; });
+                        candidates.push_back(d.date);
+                        if (d.is_alternative) alternative_contributed = true;
                     }
 
-                    // Вычисление status
+                    frame.minimal_date = aggregateDependencyDates(candidates, alternative_contributed);
+
                     frame.status = setStatus(frame.actual_date, frame.minimal_date, today);
                     frame.is_actual = setIsActual(frame.status, frame.actual_date,
-                        frame.actual_input_date, frame.actual_alternative_date);
+                                                  !frame.actual_input_dates.empty());
 
                     logFrameState("CalcMinimalDate_AFTER", frame);
                 }

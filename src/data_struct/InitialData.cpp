@@ -12,17 +12,17 @@ void InitialData::Print()
 {
     for (const auto& row : data)
     {
-        //if (row.culture_id == 12 && row.region_id == 7 && row.year == 2024)
-        //{
             std::cout << "culture_id: " << row.culture_id << std::endl;
             std::cout << "t_material_id: " << row.t_material_id << std::endl;
             std::cout << "region_id: " << row.region_id << std::endl;
             std::cout << "season: " << row.season << std::endl;
             std::cout << "region_date: " << row.region_date << std::endl;
-            std::cout << "input_operation_order: " << row.input_operation_order << std::endl;
-            std::cout << "alternative_operation_order: " << row.alternative_operation_order << std::endl;
-            std::cout << "input_deadline: " << row.input_deadline << std::endl;
-            std::cout << "alternative_deadline: " << row.alternative_deadline << std::endl;
+            std::cout << "input_operations: ";
+            for (const auto& dep : row.input_operations)
+                std::cout << "(order=" << dep.operation_order
+                          << ", deadline=" << dep.deadline
+                          << ", alt=" << dep.is_alternative << ") ";
+            std::cout << std::endl;
             std::cout << "noinput_deadline: " << row.noinput_deadline << std::endl;
             std::cout << "order: " << row.order << std::endl;
             std::cout << "year: " << row.year << std::endl;
@@ -30,8 +30,6 @@ void InitialData::Print()
             std::cout << "\n";
 
             std::cout << "planned_date: " << row.planned_dates.planned_date << std::endl;
-            std::cout << "input_date: " << row.planned_dates.input_date << std::endl;
-            std::cout << "alternative_date: " << row.planned_dates.alternative_date << std::endl;
             std::cout << "minimal_planned_date: " << row.planned_dates.minimal_planned_date << std::endl;
 
             std::cout << "\n\n";
@@ -44,6 +42,10 @@ InitialData::InitialData(const pqxx::result& rows)
     auto optInt = [](const auto& r, const char* col) -> std::optional<int>
     {
         return r[col].is_null() ? std::nullopt : std::make_optional(r[col].template as<int>());
+    };
+    auto strOr = [](const auto& r, const char* col) -> std::string {
+        return r[col].is_null() ? std::string()
+                                : r[col].template as<std::string>();
     };
 
     // 1) —начала считываем все строки в vector<InitialDataFrame>
@@ -59,10 +61,9 @@ InitialData::InitialData(const pqxx::result& rows)
             ? std::nullopt
             : std::make_optional(boost::gregorian::from_simple_string(row["region_date"].as<std::string>()));
 
-        frame.input_operation_order = optInt(row, "input_operation_order");
-        frame.alternative_operation_order = optInt(row, "alternative_operation_order");
-        frame.input_deadline = optInt(row, "input_deadline");
-        frame.alternative_deadline = optInt(row, "alternative_deadline");
+        frame.input_operations = parseInputOperations(
+            strOr(row, "input_operation_order"),
+            strOr(row, "input_deadline"));
         frame.noinput_deadline = optInt(row, "noinput_deadline");
         frame.order = row["order"].as<int>();
         frame.year = row["year"].as<int>();
